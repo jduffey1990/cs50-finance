@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Sell
+{% endblock %}
+
+{% block main %}
+    <form action="/sell" method="post" class = "d-flex flex-column align-items-center">
+        <div class="mb-3">
+            <select class="form-control mx-auto w-auto" name="symbol" type="text">
+                <option value="" disabled selected>Symbol</option>
+                {% for row in portfolio %}
+                    <option value= "{{row['symbol']}}"> {{row['symbol']}} </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <input class="form-control mx-auto w-auto" name="shares" placeholder="Shares" type="number">
+        </div>
+        <button class="btn btn-primary" type="submit">Sell</button>
+    </form>
+{% endblock %}

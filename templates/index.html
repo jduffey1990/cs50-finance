@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Home
+{% endblock %}
+
+{% block main %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-bordered align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th scope="col">Symbol</th>
+                <th scope="col">Shares</th>
+                <th scope="col">Purchase Price</th>
+                <th scope="col">Current Price</th>
+                <th scope="col">Total paid at Purchase</th>
+                <th scope="col">Total Current Value</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row['symbol'] }}</td>
+                    <td>{{ row['shares'] }}</td>
+                    <td>{{ row['bought_price'] | usd }}</td>
+                    <td>{{ row['current_price'] | usd }}</td>
+                    <td>{{ row['purchase_total'] | usd }}</td>
+                    <td>{{ row['total'] | usd }}</td>
+                </tr>
+            {% endfor %}
+                <tr>
+                    <td>CASH</td>
+                    <td colspan="4"></td><td>{{ cash | usd }}</td>
+                </tr>
+                <tr class="table-success">
+                    <td><strong>Grand Total</strong></td>
+                    <td colspan="4"></td><td><strong>{{ sum | usd }}</strong></td>
+                </tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

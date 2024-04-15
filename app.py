@@ -44,7 +44,10 @@ def index():
 
     for row in rows:
         current_quote = lookup(row['symbol'])
-        current_price = current_quote["price"]
+        if current_quote is not None and "price" in current_quote:
+            current_price = current_quote["price"]
+        else:
+            current_price = "Unavailable"
 
         # Update the portfolio to reflect the current price (if needed)
         db.execute("UPDATE portfolio SET current_price = :price WHERE user_id = :id AND symbol = :symbol",
@@ -80,7 +83,7 @@ def buy():
 
         if not shares.isdigit():
             return apology("Please enter a digit", 400)
-        # not in Yahoo Finance
+        # not in Alpha Vantage
         if not data:
             return apology("Invalid stock symbol", 400)
 
@@ -175,9 +178,9 @@ def quote():
         symbol = lookup(request.form.get("symbol").upper())
         print(symbol)
 
-        # Yahoo finance doesn't have symbol
+        # Alpha Vantage doesn't have symbol
         if symbol == None:
-            return apology("Yahoo Finance doesn't have that stock symbol", 400)
+            return apology("Alpha Vantage doesn't have that stock symbol", 400)
 
         # quoted is the secondary html after form post, now showing the single stock quote
         return render_template("quoted.html", symbol=symbol, price=symbol['price'])

@@ -4,6 +4,7 @@ import pytz
 import requests
 import urllib
 import uuid
+import time
 
 from flask import redirect, render_template, session
 from functools import wraps
@@ -51,36 +52,46 @@ def login_required(f):
 
 
 def lookup(symbol):
-    """Look up quote for symbol."""
-
-    # Prepare API request
+    """Look up quote for symbol using Alpha Vantage API."""
+    # API request preparation
     symbol = symbol.upper()
-    end = datetime.datetime.now(pytz.timezone("US/Eastern"))
-    start = end - datetime.timedelta(days=7)
+    api_key = 'MNFKXB2M6YSWS9KW'  # Replace with your actual API key
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval=5min&apikey={api_key}"
 
-    # Yahoo Finance API
-    url = (
-        f"https://query1.finance.yahoo.com/v7/finance/download/{urllib.parse.quote_plus(symbol)}"
-        f"?period1={int(start.timestamp())}"
-        f"&period2={int(end.timestamp())}"
-        f"&interval=1d&events=history&includeAdjustedClose=true"
-    )
+    # Query API with retry logic
+    attempts = 0
+    while attempts < 3:
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
 
-    # Query API
-    try:
-        response = requests.get(
-            url,
-            cookies={"session": str(uuid.uuid4())},
-            headers={"Accept": "*/*", "User-Agent": "python-requests"},
-        )
-        response.raise_for_status()
+            # Parse JSON
+            data = response.json()
+            time_series = data.get("Time Series (5min)")
+            if not time_series:
+                return {"error": "No data available for this symbol"}
 
-        # CSV header: Date,Open,High,Low,Close,Adj Close,Volume
-        quotes = list(csv.DictReader(response.content.decode("utf-8").splitlines()))
-        price = round(float(quotes[-1]["Adj Close"]), 2)
-        return {"price": price, "symbol": symbol}
-    except (KeyError, IndexError, requests.RequestException, ValueError):
-        return None
+            # Get the latest data entry
+            latest_datetime = max(time_series.keys())  # Finds the latest time entry
+            latest_data = time_series[latest_datetime]
+
+            # Extract the closing price and format it
+            price = round(float(latest_data["4. close"]), 2)
+            return {"price": price, "symbol": symbol}
+
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429:  # Rate limited
+                time.sleep((2 ** attempts) * 1)  # Exponential back-off
+            else:
+                return {"error": "HTTP error", "message": str(e)}
+        except (KeyError, ValueError) as e:
+            return {"error": "Data parsing error", "message": str(e)}
+        except requests.RequestException as e:
+            return {"error": "Request failed", "message": str(e)}
+
+        attempts += 1
+
+    return {"error": "API request failed after retries"}
 
 
 def usd(value):

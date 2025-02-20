@@ -1,7 +1,5 @@
 # C$50 Finance: A playful portfolio Web Application
 
-# This site and others have been affected by the data loss due to Elephant SQL closing. Please be patient while a new data service provider is found.
-
 # The Site is going to take a long time to load with the free server, please wait [at least a minute at this link](https://duffeyfinance.onrender.com/) if the load symbol is still spinning up.
 
 Embark on a financial journey with C$50 Finance, my capstone project for Harvard's CS50 course during week 9. This interactive web application gamifies stock trading, enabling users to manage a virtual stock portfolio using simulated funds.

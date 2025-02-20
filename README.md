@@ -22,7 +22,7 @@ Embark on your journey with "C$50 Finance" by following these straightforward st
 
 3. **Dependency Installation**: With the virtual environment active, install the project's dependencies by running `pip install -r requirements.txt`. This command ensures all necessary Python packages, including Flask and CS50's SQL library, are available.
 
-4. **Environment Variables**: To properly run your Flask application, set the necessary environment variable. For Unix/macOS, use `export FLASK_APP=application.py`. Windows users should apply `set FLASK_APP=application.py`.
+4. **Environment Variables**: To properly run your Flask application, set the necessary environment variable. For Unix/macOS, use `export FLASK_APP=application.py`. Windows users should apply `set FLASK_APP=app.py`.
 
 6. **Launch the Application**: With everything in place, start the Flask application by executing `flask run` in your terminal. This command initiates a local web server. Navigate to the URL outputted by Flask (typically `http://127.0.0.1:5000/`) in your web browser to view the application.
 

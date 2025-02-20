@@ -1,0 +1,71 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Register
+{% endblock %}
+
+{% block main %}
+<h3>Please don't use anything on this site that is used elsewhere for sensitive information, we have some password security but it is base level</h3>
+    <form action="/register" method="post">
+        <div class="mb-3">
+            <input
+              id="username"
+              autocomplete="off"
+              autofocus
+              class="form-control mx-auto w-auto"
+              name="username"
+              placeholder="Username"
+              type="text"
+            >
+        </div>
+        <div class="mb-3">
+            <input
+              id="password"
+              class="form-control mx-auto w-auto"
+              name="password"
+              placeholder="Password"
+              type="password"
+            >
+        </div>
+        <div class="mb-3">
+            <input
+              id="confirmation"
+              class="form-control mx-auto w-auto"
+              name="confirmation"
+              placeholder="Password Again"
+              type="password"
+            >
+        </div>
+
+        <!-- By default, we disable the button. JavaScript will enable it when both fields match. -->
+        <button
+          id="register-button"
+          class="btn btn-primary"
+          type="submit"
+          disabled
+        >
+            Complete Registration
+        </button>
+    </form>
+
+    <!-- Add a script that checks the two fields on every keystroke -->
+    <script>
+      const passwordField = document.getElementById('password');
+      const confirmationField = document.getElementById('confirmation');
+      const registerButton = document.getElementById('register-button');
+
+      function checkPasswords() {
+        const p1 = passwordField.value;
+        const p2 = confirmationField.value;
+
+        if (p1 && p2 && p1 === p2) {
+          registerButton.disabled = false;   // enable the button
+        } else {
+          registerButton.disabled = true;    // disable the button
+        }
+      }
+
+      passwordField.addEventListener('input', checkPasswords);
+      confirmationField.addEventListener('input', checkPasswords);
+    </script>
+{% endblock %}

@@ -4,6 +4,7 @@ from cs50 import SQL
 from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
+from decimal import Decimal, ROUND_HALF_UP
 
 from helpers import apology, login_required, lookup, usd
 
@@ -31,43 +32,63 @@ def after_request(response):
     return response
 
 
+def to_money(value):
+    """Convert API value to Decimal or return None if not usable."""
+    try:
+        return Decimal(str(value)).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    except (TypeError, ValueError):
+        return None
+
+
 @app.route("/")
 @login_required
 def index():
     """Show portfolio of stocks"""
-    rows = db.execute("SELECT * FROM portfolio WHERE user_id = :id", id=session["user_id"])
-    user_cash_result = db.execute("SELECT cash FROM users WHERE id = :id", id=session["user_id"])
-    cash = user_cash_result[0]['cash']
+    rows = db.execute(
+        "SELECT * FROM portfolio WHERE user_id = :id",
+        id=session["user_id"]
+    )
 
-    # Initialize total_portfolio_value with the cash to handle cases with no stocks
-    total_portfolio_value = cash
+    cash = Decimal(str(
+        db.execute("SELECT cash FROM users WHERE id = :id",
+                   id=session["user_id"])[0]['cash']
+    )).quantize(Decimal("0.01"))
+
+    total_portfolio_value = cash  # start with cash on hand
 
     for row in rows:
-        current_quote = lookup(row['symbol'])
-        if current_quote is not None and "price" in current_quote:
-            current_price = current_quote["price"]
-        else:
-            current_price = "Unavailable"
+        quote = lookup(row['symbol'])
+        current_price = to_money(quote["price"]) if quote else None
 
-        # Update the portfolio to reflect the current price (if needed)
-        db.execute("UPDATE portfolio SET current_price = :price WHERE user_id = :id AND symbol = :symbol",
-                   price=current_price, id=session["user_id"], symbol=row['symbol'])
+        # persist the numeric value or NULL; keep display separate
+        db.execute(
+            "UPDATE portfolio SET current_price = :price "
+            "WHERE user_id = :id AND symbol = :symbol",
+            price=float(current_price) if current_price is not None else None,
+            id=session["user_id"],
+            symbol=row['symbol']
+        )
 
-        row_total_value = row['shares'] * current_price  # Calculate total value of this stock
-        row_purchase_value = row['bought_price'] * row['shares']
+        # ------- per-row calculations -------
+        shares = row['shares']
+        bought_price = Decimal(str(row['bought_price'])).quantize(Decimal("0.01"))
 
-        row['purchase_total'] = row_purchase_value
-        row['current_price'] = current_price  # Format for display
-        row['total'] = row_total_value  # Format this stock's total value for display
+        purchase_total = shares * bought_price
+        row_total_value = shares * current_price if current_price else Decimal("0")
 
-        # Add this stock's total value to the overall portfolio value
+        # store values you’ll render
+        row['purchase_total'] = purchase_total
+        row['current_price'] = current_price  # still Decimal (for filters)
+        row['total'] = row_total_value
+
         total_portfolio_value += row_total_value
 
-    # Ensure 'total' is formatted for display outside the loop
-    # This 'total' now represents the total value of the portfolio, including cash
-    total_formatted = total_portfolio_value
-
-    return render_template("index.html", rows=rows, cash=cash, sum=total_formatted)
+    return render_template(
+        "index.html",
+        rows=rows,
+        cash=cash,
+        sum=total_portfolio_value
+    )
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -98,14 +119,16 @@ def buy():
             return apology("Insufficient funds", 400)
 
         # update present stock or add if not a previously owned stock
-        db.execute("INSERT INTO portfolio (user_id, symbol, shares, bought_price, current_price) VALUES (:user_id, :symbol, :shares, :price, :price) ON CONFLICT(user_id, symbol) DO UPDATE SET shares = shares + :shares, current_price = :price",
-                   user_id=session["user_id"], symbol=symbol, shares=shares, price=price)
+        db.execute(
+            "INSERT INTO portfolio (user_id, symbol, shares, bought_price, current_price) VALUES (:user_id, :symbol, :shares, :price, :price) ON CONFLICT(user_id, symbol) DO UPDATE SET shares = shares + :shares, current_price = :price",
+            user_id=session["user_id"], symbol=symbol, shares=shares, price=price)
         # user cash update
         db.execute("UPDATE users SET cash = cash - :cost WHERE id = :id",
                    cost=cost, id=session["user_id"])
         # the purchase is now in the history
-        db.execute("INSERT INTO history (user_id, symbol, shares, method, price) VALUES (:user_id, :symbol, :shares, 'Buy', :price)",
-                   user_id=session["user_id"], symbol=symbol, shares=shares, price=price)
+        db.execute(
+            "INSERT INTO history (user_id, symbol, shares, method, price) VALUES (:user_id, :symbol, :shares, 'Buy', :price)",
+            user_id=session["user_id"], symbol=symbol, shares=shares, price=price)
 
         return redirect("/")
     else:
@@ -172,7 +195,6 @@ def logout():
 
 @app.route("/quote", methods=["GET", "POST"])
 def quote():
-
     # form submit as html directed
     if request.method == "POST":
         symbol = lookup(request.form.get("symbol").upper())
@@ -219,7 +241,7 @@ def register():
             return apology("the password and confirmation must match", 400)
 
         db.execute("INSERT INTO users (username, hash) VALUES(?, ?)", username, generate_password_hash(password))
-        
+
         return redirect("/login")
 
     return render_template("register.html")
@@ -287,8 +309,9 @@ def sell():
                        symbol=symbol, id=session["user_id"])
 
         # update history table
-        db.execute("INSERT INTO history (user_id, symbol, shares, method, price) VALUES (:user_id, :symbol, :shares, 'Sell', :price)",
-                   user_id=session["user_id"], symbol=symbol, shares=shares, price=data['price'])
+        db.execute(
+            "INSERT INTO history (user_id, symbol, shares, method, price) VALUES (:user_id, :symbol, :shares, 'Sell', :price)",
+            user_id=session["user_id"], symbol=symbol, shares=shares, price=data['price'])
 
         return redirect("/")
     # GET page render

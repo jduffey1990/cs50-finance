@@ -48,6 +48,7 @@ def index():
         "SELECT * FROM portfolio WHERE user_id = :id",
         id=session["user_id"]
     )
+    print("portfolio objects", rows)
 
     cash = Decimal(str(
         db.execute("SELECT cash FROM users WHERE id = :id",
@@ -58,6 +59,7 @@ def index():
 
     for row in rows:
         quote = lookup(row['symbol'])
+        print("the quote should have price", quote)
         current_price = to_money(quote["price"]) if quote else None
 
         # persist the numeric value or NULL; keep display separate

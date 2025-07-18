@@ -90,6 +90,9 @@ def index():
 
         total_portfolio_value += row_total_value
 
+    print("final check rows", rows)
+    print("final check cash", cash)
+    print("final check total", total_portfolio_value)
     return render_template(
         "index.html",
         rows=rows,

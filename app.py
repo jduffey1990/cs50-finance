@@ -48,7 +48,6 @@ def index():
         "SELECT * FROM portfolio WHERE user_id = :id",
         id=session["user_id"]
     )
-    print("portfolio objects", rows)
 
     cash = Decimal(str(
         db.execute("SELECT cash FROM users WHERE id = :id",
@@ -58,9 +57,15 @@ def index():
     total_portfolio_value = cash  # start with cash on hand
 
     for row in rows:
-        quote = lookup(row['symbol'])
-        print("the quote should have price", quote)
-        current_price = to_money(quote["price"]) if quote else None
+        quote = lookup(row["symbol"]) or {}  # make sure it’s a dict
+        price = quote.get("price")  # None if error / throttled
+        message = quote.get("error")  # text from lookup()
+
+        if price is None:
+            flash(f"Could not refresh {row['symbol']}: {message or 'no data'}")
+            continue  # skip to next holding
+
+        current_price = to_money(price)
 
         # persist the numeric value or NULL; keep display separate
         db.execute(
@@ -200,7 +205,6 @@ def quote():
     # form submit as html directed
     if request.method == "POST":
         symbol = lookup(request.form.get("symbol").upper())
-        print(symbol)
 
         # Alpha Vantage doesn't have symbol
         if symbol == None:

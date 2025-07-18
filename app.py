@@ -57,17 +57,15 @@ def index():
     total_portfolio_value = cash  # start with cash on hand
 
     for row in rows:
-        quote = lookup(row["symbol"]) or {}
-        price = quote.get("price")
         shares = row["shares"]
+        stored_price = Decimal(str(row["current_price"])).quantize(Decimal("0.01"))
 
-        if price is None:
-            flash(f"Could not refresh {row['symbol']}: {quote.get('error', 'no data')}")
-            current_price = None
-            row_total_value = Decimal("0")
-        else:
-            current_price = to_money(price)
-            row_total_value = shares * current_price
+        quote = lookup(row["symbol"]) or {}
+        live_price = quote.get("price")
+
+        # choose price: live if available, otherwise DB copy
+        if live_price is not None:
+            current_price = to_money(live_price)  # ← already Decimal
             db.execute(
                 "UPDATE portfolio SET current_price = :price "
                 "WHERE user_id = :id AND symbol = :symbol",
@@ -75,13 +73,16 @@ def index():
                 id=session["user_id"],
                 symbol=row["symbol"],
             )
+        else:
+            flash(f"Could not refresh {row['symbol']}: {quote.get('error', 'no data')}")
+            current_price = stored_price  # still Decimal
 
         bought_price = Decimal(str(row["bought_price"])).quantize(Decimal("0.01"))
         purchase_total = shares * bought_price
+        row_total_value = shares * current_price
 
-        # always set the fields
         row["purchase_total"] = purchase_total
-        row["current_price"] = current_price  # may be None
+        row["current_price"] = current_price
         row["total"] = row_total_value
 
         total_portfolio_value += row_total_value

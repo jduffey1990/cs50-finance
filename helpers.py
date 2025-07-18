@@ -8,6 +8,7 @@ import time
 
 from flask import redirect, render_template, session
 from functools import wraps
+from jinja2 import Undefined
 
 
 def apology(message, code=400):
@@ -67,6 +68,7 @@ def lookup(symbol):
 
             # Parse JSON
             data = response.json()
+            print(data)
             time_series = data.get("Time Series (5min)")
             if not time_series:
                 return {"error": "No data available for this symbol"}
@@ -95,5 +97,7 @@ def lookup(symbol):
 
 
 def usd(value):
-    """Format value as USD."""
+    """Format value as USD, or '-' when value is missing."""
+    if value is None or isinstance(value, Undefined):
+        return "–"
     return f"${value:,.2f}"

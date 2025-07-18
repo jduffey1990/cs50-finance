@@ -57,36 +57,32 @@ def index():
     total_portfolio_value = cash  # start with cash on hand
 
     for row in rows:
-        quote = lookup(row["symbol"]) or {}  # make sure it’s a dict
-        price = quote.get("price")  # None if error / throttled
-        message = quote.get("error")  # text from lookup()
+        quote = lookup(row["symbol"]) or {}
+        price = quote.get("price")
+        shares = row["shares"]
 
         if price is None:
-            flash(f"Could not refresh {row['symbol']}: {message or 'no data'}")
-            continue  # skip to next holding
+            flash(f"Could not refresh {row['symbol']}: {quote.get('error', 'no data')}")
+            current_price = None
+            row_total_value = Decimal("0")
+        else:
+            current_price = to_money(price)
+            row_total_value = shares * current_price
+            db.execute(
+                "UPDATE portfolio SET current_price = :price "
+                "WHERE user_id = :id AND symbol = :symbol",
+                price=float(current_price),
+                id=session["user_id"],
+                symbol=row["symbol"],
+            )
 
-        current_price = to_money(price)
-
-        # persist the numeric value or NULL; keep display separate
-        db.execute(
-            "UPDATE portfolio SET current_price = :price "
-            "WHERE user_id = :id AND symbol = :symbol",
-            price=float(current_price) if current_price is not None else None,
-            id=session["user_id"],
-            symbol=row['symbol']
-        )
-
-        # ------- per-row calculations -------
-        shares = row['shares']
-        bought_price = Decimal(str(row['bought_price'])).quantize(Decimal("0.01"))
-
+        bought_price = Decimal(str(row["bought_price"])).quantize(Decimal("0.01"))
         purchase_total = shares * bought_price
-        row_total_value = shares * current_price if current_price else Decimal("0")
 
-        # store values you’ll render
-        row['purchase_total'] = purchase_total
-        row['current_price'] = current_price  # still Decimal (for filters)
-        row['total'] = row_total_value
+        # always set the fields
+        row["purchase_total"] = purchase_total
+        row["current_price"] = current_price  # may be None
+        row["total"] = row_total_value
 
         total_portfolio_value += row_total_value
 

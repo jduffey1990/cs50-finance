@@ -4,3 +4,6 @@ Flask-Session
 pytz
 requests
 gunicorn
+python-dotenv
+jinja2
+dotenv

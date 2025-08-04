@@ -22,6 +22,7 @@ Session(app)
 # Configure CS50 Library to use SQLite database
 db = SQL("sqlite:///finance.db")
 
+price_cache = {}
 
 @app.after_request
 def after_request(response):
@@ -60,7 +61,9 @@ def index():
         shares = row["shares"]
         stored_price = Decimal(str(row["current_price"])).quantize(Decimal("0.01"))
 
-        quote = lookup(row["symbol"]) or {}
+        ticker = row["symbol"].upper()
+        quote = price_cache[ticker] or lookup(ticker)
+        price_cache[ticker] = quote.get("price")
         live_price = quote.get("price")
 
         # choose price: live if available, otherwise DB copy
@@ -87,9 +90,6 @@ def index():
 
         total_portfolio_value += row_total_value
 
-    print("final check rows", rows)
-    print("final check cash", cash)
-    print("final check total", total_portfolio_value)
     return render_template(
         "index.html",
         rows=rows,
@@ -111,7 +111,7 @@ def buy():
 
         if not shares.isdigit():
             return apology("Please enter a digit", 400)
-        # not in Alpha Vantage
+        # not in Polygon
         if not data:
             return apology("Invalid stock symbol", 400)
 
@@ -206,9 +206,9 @@ def quote():
     if request.method == "POST":
         symbol = lookup(request.form.get("symbol").upper())
 
-        # Alpha Vantage doesn't have symbol
+        # Polygon doesn't have symbol
         if symbol == None:
-            return apology("Alpha Vantage doesn't have that stock symbol", 400)
+            return apology("Polygon doesn't have that stock symbol", 400)
 
         # quoted is the secondary html after form post, now showing the single stock quote
         return render_template("quoted.html", symbol=symbol, price=symbol['price'])

@@ -1,15 +1,13 @@
-import csv
-import datetime
-import pytz
+import os
 import requests
-import urllib
-import uuid
-import time
+from datetime import date, timedelta
 
 from flask import redirect, render_template, session
 from functools import wraps
 from jinja2 import Undefined
-
+from dotenv import load_dotenv
+# Load environment variables from .env file
+load_dotenv()
 
 def apology(message, code=400):
     """Render message as an apology to user."""
@@ -51,49 +49,55 @@ def login_required(f):
 
     return decorated_function
 
+last_market_day = None
+
+def get_last_market_day():
+    """Always return the previous market day with available data (never today)."""
+    global last_market_day
+
+    if last_market_day is not None:
+        return last_market_day
+
+    today = date.today()
+
+    # Always subtract one day (today's data won't be available yet)
+    candidate = today - timedelta(days=1)
+
+    # Skip backwards over weekends
+    while candidate.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+        candidate -= timedelta(days=1)
+
+    last_market_day = candidate.isoformat()
+    return last_market_day
 
 def lookup(symbol):
-    """Look up quote for symbol using Alpha Vantage API."""
-    # API request preparation
+    """Look up stock price using Polygon.io's free open-close endpoint."""
     symbol = symbol.upper()
-    api_key = 'MNFKXB2M6YSWS9KW'  # Replace with your actual API key
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval=5min&apikey={api_key}"
+    api_key = os.getenv("POLYGON_API_KEY")
+    query_date = get_last_market_day()
 
-    # Query API with retry logic
-    attempts = 0
-    while attempts < 3:
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
+    url = f"https://api.polygon.io/v1/open-close/{symbol}/{query_date}?adjusted=true&apiKey={api_key}"
 
-            # Parse JSON
-            data = response.json()
-            print(data)
-            time_series = data.get("Time Series (5min)")
-            if not time_series:
-                return {"error": "No data available for this symbol"}
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
 
-            # Get the latest data entry
-            latest_datetime = max(time_series.keys())  # Finds the latest time entry
-            latest_data = time_series[latest_datetime]
+        print("we have data now", data)
 
-            # Extract the closing price and format it
-            price = round(float(latest_data["4. close"]), 2)
-            return {"price": price, "symbol": symbol}
+        if "close" not in data:
+            return {"error": "No price data found", "symbol": symbol}
 
-        except requests.exceptions.HTTPError as e:
-            if response.status_code == 429:  # Rate limited
-                time.sleep((2 ** attempts) * 1)  # Exponential back-off
-            else:
-                return {"error": "HTTP error", "message": str(e)}
-        except (KeyError, ValueError) as e:
-            return {"error": "Data parsing error", "message": str(e)}
-        except requests.RequestException as e:
-            return {"error": "Request failed", "message": str(e)}
+        price = round(float(data["close"]), 2)
+        return {"price": price, "symbol": symbol}
 
-        attempts += 1
+    except requests.exceptions.HTTPError as e:
+        return {"error": "HTTP error", "message": str(e)}
+    except (KeyError, ValueError) as e:
+        return {"error": "Data parsing error", "message": str(e)}
+    except requests.RequestException as e:
+        return {"error": "Request failed", "message": str(e)}
 
-    return {"error": "API request failed after retries"}
 
 
 def usd(value):

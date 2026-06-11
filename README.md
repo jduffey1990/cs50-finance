@@ -36,7 +36,7 @@ By following these steps, you'll have "C$50 Finance" up and running, ready for y
 Enables new users to create an account. Displays an error for incomplete submissions or duplicate usernames.
 
 ### Home/Index Page
-Presents a detailed table of the user's stock portfolio, including the number of shares owned, current stock prices, total holding values, available cash balance, and combined net worth.
+Presents a detailed table of the user's stock portfolio, including the number of shares owned, current stock prices, total holding values, unrealized gain/loss per position (in dollars and percent), available cash balance, and combined net worth. Each visit also records a daily net-worth snapshot, charted over time at the bottom of the page.
 
 ### Quote Page
 Facilitates stock price checks (previous market close) by querying the Polygon.io API, with error handling for invalid stock symbols.
@@ -49,3 +49,9 @@ Enables the sale of stocks currently held in the user's portfolio, updating the 
 
 ### History Page
 Chronicles all user transactions, listing the nature of the transaction (buy/sell), stock symbol, transaction price, share quantity, and the date/time of execution.
+
+### Time Machine Page
+Answers "what if I had invested $X in Y back then?" — pick a stock, a dollar amount, and any date up to two years ago, and see the investment's value charted day by day through today, with the total gain or loss. A hands-on lesson in compound returns, powered by Polygon's historical daily bars.
+
+### Leaderboard Page
+Ranks all users by net worth (cash plus holdings at last-known prices). Everyone starts with the same $10,000, so the ranking reflects pure investing performance.

@@ -15,6 +15,7 @@
                 <th scope="col">Current Price</th>
                 <th scope="col">Total paid at Purchase</th>
                 <th scope="col">Total Current Value</th>
+                <th scope="col">Gain / Loss</th>
             </tr>
         </thead>
         <tbody>
@@ -26,17 +27,55 @@
                     <td>{{ row['current_price'] | usd }}</td>
                     <td>{{ row['purchase_total'] | usd }}</td>
                     <td>{{ row['total'] | usd }}</td>
+                    <td class="fw-bold {{ 'text-success' if row['gain'] >= 0 else 'text-danger' }}">
+                        {{ row['gain'] | usd }} ({{ '%+.2f' | format(row['gain_pct']) }}%)
+                    </td>
                 </tr>
             {% endfor %}
                 <tr>
                     <td>CASH</td>
-                    <td colspan="4"></td><td>{{ cash | usd }}</td>
+                    <td colspan="4"></td><td>{{ cash | usd }}</td><td></td>
                 </tr>
                 <tr class="table-success">
                     <td><strong>Grand Total</strong></td>
-                    <td colspan="4"></td><td><strong>{{ sum | usd }}</strong></td>
+                    <td colspan="4"></td><td><strong>{{ sum | usd }}</strong></td><td></td>
                 </tr>
         </tbody>
     </table>
 </div>
+
+<div class="mx-auto mt-5" style="max-width: 720px;">
+    <h2 class="h5">Net Worth Over Time</h2>
+    {% if snapshot_dates | length < 2 %}
+        <p class="text-muted small">Your net worth gets recorded once a day when you visit this page — come back tomorrow and a chart will start to grow here.</p>
+    {% endif %}
+    <canvas id="netWorthChart"></canvas>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    new Chart(document.getElementById("netWorthChart"), {
+        type: "line",
+        data: {
+            labels: {{ snapshot_dates | tojson }},
+            datasets: [{
+                label: "Net worth ($)",
+                data: {{ snapshot_values | tojson }},
+                borderColor: "#198754",
+                backgroundColor: "rgba(25, 135, 84, 0.1)",
+                fill: true,
+                tension: 0.2,
+                pointRadius: 3
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { callback: value => "$" + value.toLocaleString() } }
+            }
+        }
+    });
+</script>
 {% endblock %}

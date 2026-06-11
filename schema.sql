@@ -18,6 +18,15 @@ CREATE TABLE portfolio (
     UNIQUE(user_id, symbol)
 );
 
+CREATE TABLE snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    total_value REAL NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id),
+    UNIQUE(user_id, date)
+);
+
 CREATE TABLE history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,

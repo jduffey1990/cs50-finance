@@ -1,10 +1,14 @@
 from cs50 import SQL
+from datetime import date, timedelta
 from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from helpers import apology, login_required, lookup, usd
+from helpers import apology, login_required, lookup, lookup_history, usd
+
+# Every new account starts with this much play money
+STARTING_CASH = 10000
 
 # Configure application
 app = Flask(__name__)
@@ -82,14 +86,28 @@ def index():
         row["purchase_total"] = purchase_total
         row["current_price"] = current_price
         row["total"] = row_total_value
+        row["gain"] = row_total_value - purchase_total
+        row["gain_pct"] = float((current_price / bought_price - 1) * 100) if bought_price else 0.0
 
         total_portfolio_value += row_total_value
+
+    # record today's net worth (one snapshot per user per day) for the chart
+    db.execute(
+        "INSERT INTO snapshots (user_id, date, total_value) VALUES (:id, DATE('now'), :value) "
+        "ON CONFLICT(user_id, date) DO UPDATE SET total_value = excluded.total_value",
+        id=session["user_id"], value=float(total_portfolio_value))
+
+    snapshots = db.execute(
+        "SELECT date, total_value FROM snapshots WHERE user_id = :id ORDER BY date",
+        id=session["user_id"])
 
     return render_template(
         "index.html",
         rows=rows,
         cash=cash,
-        sum=total_portfolio_value
+        sum=total_portfolio_value,
+        snapshot_dates=[s["date"] for s in snapshots],
+        snapshot_values=[s["total_value"] for s in snapshots]
     )
 
 
@@ -320,3 +338,76 @@ def sell():
 
         # render sell.html form, passing in current stocks
         return render_template("sell.html", portfolio=portfolio)
+
+
+@app.route("/timemachine", methods=["GET", "POST"])
+@login_required
+def timemachine():
+    """Show what a past investment would be worth today."""
+    today = date.today()
+    min_date = today - timedelta(days=729)  # Polygon free tier: two years of daily history
+    max_date = today - timedelta(days=1)
+
+    if request.method == "POST":
+        symbol = (request.form.get("symbol") or "").strip().upper()
+
+        try:
+            amount = round(float(request.form.get("amount") or ""), 2)
+        except ValueError:
+            return apology("Please enter a dollar amount", 400)
+        if amount <= 0:
+            return apology("Amount must be greater than 0", 400)
+
+        try:
+            start_date = date.fromisoformat(request.form.get("date") or "")
+        except ValueError:
+            return apology("Please pick a date", 400)
+        if not min_date <= start_date <= max_date:
+            return apology(f"Pick a date between {min_date} and {max_date}", 400)
+
+        bars = lookup_history(symbol, start_date.isoformat(), max_date.isoformat())
+        if not bars:
+            return apology("No price history for that symbol and date", 400)
+
+        # fractional shares keep the math honest for any dollar amount
+        bought_shares = amount / bars[0]["close"]
+        values = [round(bought_shares * bar["close"], 2) for bar in bars]
+        final_value = values[-1]
+
+        return render_template(
+            "timemachine.html",
+            min_date=min_date, max_date=max_date,
+            result={
+                "symbol": symbol,
+                "amount": amount,
+                "start": bars[0]["date"],
+                "end": bars[-1]["date"],
+                "shares": round(bought_shares, 4),
+                "start_price": bars[0]["close"],
+                "end_price": bars[-1]["close"],
+                "final_value": final_value,
+                "gain": round(final_value - amount, 2),
+                "gain_pct": round((final_value / amount - 1) * 100, 2),
+            },
+            dates=[bar["date"] for bar in bars],
+            values=values,
+        )
+
+    return render_template("timemachine.html", min_date=min_date, max_date=max_date, result=None)
+
+
+@app.route("/leaderboard")
+@login_required
+def leaderboard():
+    """Rank users by net worth: cash plus holdings at last-known prices."""
+    rows = db.execute(
+        "SELECT u.id, u.username, "
+        "u.cash + COALESCE(SUM(p.shares * p.current_price), 0) AS total "
+        "FROM users u LEFT JOIN portfolio p ON p.user_id = u.id "
+        "GROUP BY u.id ORDER BY total DESC LIMIT 25")
+
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+        row["gain_pct"] = (row["total"] / STARTING_CASH - 1) * 100
+
+    return render_template("leaderboard.html", rows=rows)

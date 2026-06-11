@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Time Machine
+{% endblock %}
+
+{% block main %}
+    <h1 class="h3 mb-2">Investment Time Machine</h1>
+    <p class="text-muted mb-4">What if you had invested back then? Pick a stock, an amount, and a date up to two years ago.</p>
+
+    <form action="/timemachine" method="post" class="d-flex flex-column align-items-center">
+        <div class="mb-3">
+            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" name="symbol" placeholder="Symbol (e.g. NVDA)" type="text" value="{{ result['symbol'] if result }}" required>
+        </div>
+        <div class="mb-3">
+            <input class="form-control mx-auto w-auto" name="amount" placeholder="Amount ($)" type="number" min="1" step="0.01" value="{{ result['amount'] if result }}" required>
+        </div>
+        <div class="mb-3">
+            <input class="form-control mx-auto w-auto" name="date" type="date" min="{{ min_date }}" max="{{ max_date }}" value="{{ result['start'] if result }}" required>
+        </div>
+        <button class="btn btn-primary" type="submit">Take me back</button>
+    </form>
+
+    {% if result %}
+        <div class="mx-auto mt-5" style="max-width: 720px;">
+            <div class="alert {{ 'alert-success' if result['gain'] >= 0 else 'alert-danger' }}">
+                <strong>{{ result['amount'] | usd }}</strong> of {{ result['symbol'] }} bought on {{ result['start'] }}
+                ({{ result['shares'] }} shares at {{ result['start_price'] | usd }})
+                would be worth <strong>{{ result['final_value'] | usd }}</strong> as of {{ result['end'] }} —
+                a {{ 'gain' if result['gain'] >= 0 else 'loss' }} of
+                <strong>{{ result['gain'] | usd }} ({{ '%+.2f' | format(result['gain_pct']) }}%)</strong>.
+            </div>
+            <canvas id="timeMachineChart"></canvas>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+    {% if result %}
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+        <script>
+            new Chart(document.getElementById("timeMachineChart"), {
+                type: "line",
+                data: {
+                    labels: {{ dates | tojson }},
+                    datasets: [{
+                        label: "Investment value ($)",
+                        data: {{ values | tojson }},
+                        borderColor: {{ '"#198754"' if result['gain'] >= 0 else '"#dc3545"' }},
+                        backgroundColor: {{ '"rgba(25, 135, 84, 0.1)"' if result['gain'] >= 0 else '"rgba(220, 53, 69, 0.1)"' }},
+                        fill: true,
+                        tension: 0.2,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { maxTicksLimit: 12 } },
+                        y: { ticks: { callback: value => "$" + value.toLocaleString() } }
+                    }
+                }
+            });
+        </script>
+    {% endif %}
+{% endblock %}

@@ -45,6 +45,12 @@ def to_money(value):
         return None
 
 
+@app.route("/ping", methods=["GET"])
+def ping():
+    """Health check for uptime pingers, keeps the free-tier instance warm."""
+    return "OK", 200
+
+
 @app.route("/")
 @login_required
 def index():

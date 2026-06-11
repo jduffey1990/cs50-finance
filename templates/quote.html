@@ -5,10 +5,82 @@
 {% endblock %}
 
 {% block main %}
-    <form action="/quote" method="post">
+    <h1 class="h3 mb-4">Get a Quote</h1>
+
+    <form action="/quote" method="post" class="d-flex flex-column align-items-center mb-4">
         <div class="mb-3">
-            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" name="symbol" placeholder="Stock Symbol" type="text">
+            <input autocomplete="off" autofocus class="form-control mx-auto" style="width: 20rem;" name="symbol" placeholder="Symbol or company name" type="text" data-autocomplete required>
         </div>
         <button class="btn btn-primary" type="submit">Find Stock</button>
     </form>
+
+    {% if most_held %}
+        <div class="mb-5">
+            <h2 class="h6 text-muted">Most held on DUFF Finance</h2>
+            <div class="d-flex flex-wrap justify-content-center gap-2">
+                {% for row in most_held %}
+                    <a class="btn btn-sm btn-outline-primary" href="/quote?symbol={{ row['symbol'] }}">{{ row['symbol'] }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="mx-auto" style="max-width: 760px;">
+        <h2 class="h6 text-muted">Yesterday's biggest movers <span id="moversDate" class="fw-normal"></span></h2>
+        <div id="moversLoading" class="text-muted small my-4">
+            <div class="spinner-border spinner-border-sm me-2" role="status"></div>Loading movers…
+        </div>
+        <div class="row g-4 d-none text-start" id="moversGrid">
+            <div class="col-md-6">
+                <h3 class="h6 text-success">Top gainers</h3>
+                <div class="list-group" id="gainersList"></div>
+            </div>
+            <div class="col-md-6">
+                <h3 class="h6 text-danger">Top losers</h3>
+                <div class="list-group" id="losersList"></div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/autocomplete.js"></script>
+<script>
+    function moverRow(m, positive) {
+        const a = document.createElement("a");
+        a.className = "list-group-item list-group-item-action mover-row d-flex justify-content-between align-items-center";
+        a.href = `/quote?symbol=${encodeURIComponent(m.symbol)}`;
+
+        const left = document.createElement("span");
+        const sym = document.createElement("strong");
+        sym.textContent = m.symbol;
+        const price = document.createElement("span");
+        price.className = "text-muted small ms-2";
+        price.textContent = "$" + m.price.toLocaleString(undefined, {minimumFractionDigits: 2});
+        left.append(sym, price);
+
+        const badge = document.createElement("span");
+        badge.className = "badge " + (positive ? "text-bg-success" : "text-bg-danger");
+        badge.textContent = (m.change_pct > 0 ? "+" : "") + m.change_pct.toFixed(2) + "%";
+
+        a.append(left, badge);
+        return a;
+    }
+
+    (async () => {
+        const loading = document.getElementById("moversLoading");
+        try {
+            const res = await fetch("/api/movers");
+            if (!res.ok) throw new Error("unavailable");
+            const data = await res.json();
+            document.getElementById("moversDate").textContent = `(${data.date})`;
+            data.gainers.forEach(m => document.getElementById("gainersList").appendChild(moverRow(m, true)));
+            data.losers.forEach(m => document.getElementById("losersList").appendChild(moverRow(m, false)));
+            loading.classList.add("d-none");
+            document.getElementById("moversGrid").classList.remove("d-none");
+        } catch (e) {
+            loading.textContent = "Movers are unavailable right now.";
+        }
+    })();
+</script>
 {% endblock %}

@@ -10,7 +10,7 @@
 
     <form action="/timemachine" method="post" class="d-flex flex-column align-items-center">
         <div class="mb-3">
-            <input autocomplete="off" autofocus class="form-control mx-auto w-auto" name="symbol" placeholder="Symbol (e.g. NVDA)" type="text" value="{{ result['symbol'] if result }}" required>
+            <input autocomplete="off" autofocus class="form-control mx-auto" style="width: 20rem;" name="symbol" placeholder="Symbol or company name" type="text" data-autocomplete value="{{ result['symbol'] if result else request.args.get('symbol', '') }}" required>
         </div>
         <div class="mb-3">
             <input class="form-control mx-auto w-auto" name="amount" placeholder="Amount ($)" type="number" min="1" step="0.01" value="{{ result['amount'] if result }}" required>
@@ -36,6 +36,7 @@
 {% endblock %}
 
 {% block scripts %}
+    <script src="/static/autocomplete.js"></script>
     {% if result %}
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
         <script>

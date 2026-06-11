@@ -22,4 +22,29 @@ nav .navbar-brand .green
     color: #2e944b;
 }
 
+/* Symbol autocomplete dropdown */
+.ac-wrap
+{
+    position: relative;
+    display: inline-block;
+}
+.ac-list
+{
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 100%;
+    z-index: 1050;
+    display: none;
+    max-height: 320px;
+    overflow-y: auto;
+    white-space: nowrap;
+}
+
+/* Movers grid rows */
+.mover-row
+{
+    text-decoration: none;
+}
+
 

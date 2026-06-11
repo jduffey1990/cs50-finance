@@ -2,12 +2,12 @@ import os
 
 from cs50 import SQL
 from datetime import date, timedelta
-from flask import Flask, flash, redirect, render_template, request, session
+from flask import Flask, flash, jsonify, redirect, render_template, request, session
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from helpers import apology, login_required, lookup, lookup_history, usd
+from helpers import apology, login_required, lookup, lookup_history, search_tickers, top_movers, usd
 
 # Every new account starts with this much play money
 STARTING_CASH = 10000
@@ -43,6 +43,33 @@ def to_money(value):
         return Decimal(str(value)).quantize(Decimal("0.01"), ROUND_HALF_UP)
     except (InvalidOperation, TypeError, ValueError):
         return None
+
+
+@app.route("/api/search")
+@login_required
+def api_search():
+    """Autocomplete: stocks matching ?q= by symbol or company name."""
+    return jsonify(search_tickers(request.args.get("q", "")))
+
+
+@app.route("/api/movers")
+@login_required
+def api_movers():
+    """Top gainers and losers from the most recent trading day."""
+    movers = top_movers()
+    if movers is None:
+        return jsonify({"error": "movers unavailable"}), 503
+    return jsonify(movers)
+
+
+@app.route("/api/price")
+@login_required
+def api_price():
+    """Current (previous close) price for ?symbol=, for live cost estimates."""
+    data = lookup(request.args.get("symbol", ""))
+    if data is None:
+        return jsonify({"error": "no price data"}), 404
+    return jsonify(data)
 
 
 @app.route("/ping", methods=["GET"])
@@ -171,7 +198,8 @@ def buy():
 
         return redirect("/")
     else:
-        return render_template("buy.html")
+        cash = db.execute("SELECT cash FROM users WHERE id = :id", id=session["user_id"])[0]["cash"]
+        return render_template("buy.html", cash=float(cash))
 
 
 @app.route("/history")
@@ -235,9 +263,10 @@ def logout():
 @app.route("/quote", methods=["GET", "POST"])
 @login_required
 def quote():
-    # form submit as html directed
-    if request.method == "POST":
-        data = lookup(request.form.get("symbol"))
+    # form submit, or a deep link like /quote?symbol=NVDA from the movers grid
+    symbol = request.form.get("symbol") if request.method == "POST" else request.args.get("symbol")
+    if symbol:
+        data = lookup(symbol)
 
         # Massive doesn't have symbol
         if data is None:
@@ -246,9 +275,11 @@ def quote():
         # quoted is the secondary html after form post, now showing the single stock quote
         return render_template("quoted.html", symbol=data, price=data['price'])
 
-    # open page
-    else:
-        return render_template("quote.html")
+    # open page; most-held stocks across all users make handy one-click chips
+    most_held = db.execute(
+        "SELECT symbol, SUM(shares * current_price) AS held FROM portfolio "
+        "GROUP BY symbol ORDER BY held DESC LIMIT 8")
+    return render_template("quote.html", most_held=most_held)
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -289,64 +320,67 @@ def register():
 def sell():
     """Sell shares of stock"""
 
-    # if POST method proceed to sell stock
+    holdings = db.execute(
+        "SELECT symbol, shares, current_price FROM portfolio WHERE user_id = :id ORDER BY symbol",
+        id=session["user_id"])
+
+    # batch sell: the form posts one shares_<SYMBOL> field per holding
     if request.method == "POST":
-        symbol = (request.form.get("symbol") or "").strip().upper()
-        shares = request.form.get("shares") or ""
+        sales = []
+        for row in holdings:
+            raw = (request.form.get(f"shares_{row['symbol']}") or "").strip()
+            if not raw or raw == "0":
+                continue
+            if not raw.isdigit():
+                return apology(f"Shares for {row['symbol']} must be a whole number", 400)
+            quantity = int(raw)
+            if quantity > row["shares"]:
+                return apology(f"You only own {row['shares']} shares of {row['symbol']}", 400)
+            sales.append((row, quantity))
 
-        if not shares.isdigit() or int(shares) < 1:
-            return apology("Shares must be a positive whole number", 400)
+        if not sales:
+            return apology("Select at least one stock to sell", 400)
 
-        shares = int(shares)
+        total_proceeds = 0.0
+        for row, quantity in sales:
+            symbol = row["symbol"]
 
-        # return apology if the symbol isn't owned
-        rows = db.execute("SELECT * FROM portfolio WHERE user_id = :id AND symbol = :symbol",
-                          id=session["user_id"], symbol=symbol)
-        if len(rows) != 1:
-            return apology("Provide valid stock symbol", 400)
+            # prefer a live price; fall back to the last saved one
+            data = lookup(symbol)
+            if data is not None:
+                price = data["price"]
+            else:
+                price = float(row["current_price"])
+                flash(f"Used last saved price for {symbol}")
 
-        # shares must be less than or equal to shares owned
-        previousshares = rows[0]['shares']
-        if shares > previousshares:
-            return apology("You can't sell more than you own", 400)
+            value = round(price * quantity, 2)
+            total_proceeds += value
 
-        # get the current price from the data
-        data = lookup(symbol)
-        if data is None:
-            return apology("Couldn't get a price for that stock, try again shortly", 400)
-        current_price = data['price']
+            db.execute("UPDATE users SET cash = cash + :value WHERE id = :id",
+                       value=value, id=session["user_id"])
 
-        # total value sold
-        value = round(current_price * shares, 2)
+            if quantity == row["shares"]:
+                db.execute("DELETE FROM portfolio WHERE symbol = :symbol AND user_id = :id",
+                           symbol=symbol, id=session["user_id"])
+            else:
+                db.execute(
+                    "UPDATE portfolio SET shares = shares - :quantity WHERE user_id = :id AND symbol = :symbol",
+                    quantity=quantity, id=session["user_id"], symbol=symbol)
 
-        # update cash for the user
-        db.execute("UPDATE users SET cash = cash + :value WHERE id = :id",
-                   value=value, id=session["user_id"])
+            db.execute(
+                "INSERT INTO history (user_id, symbol, shares, method, price) VALUES (:user_id, :symbol, :shares, 'Sell', :price)",
+                user_id=session["user_id"], symbol=symbol, shares=quantity, price=price)
 
-        # update shares owned in db
-        updatedshares = previousshares - shares
-        if updatedshares > 0:
-            db.execute("UPDATE portfolio SET shares = :updatedshares WHERE user_id = :id AND symbol = :symbol",
-                       updatedshares=updatedshares, id=session["user_id"], symbol=symbol)
-        else:
-            db.execute("DELETE FROM portfolio WHERE symbol = :symbol AND user_id = :id",
-                       symbol=symbol, id=session["user_id"])
-
-        # update history table
-        db.execute(
-            "INSERT INTO history (user_id, symbol, shares, method, price) VALUES (:user_id, :symbol, :shares, 'Sell', :price)",
-            user_id=session["user_id"], symbol=symbol, shares=shares, price=current_price)
-
+        flash(f"Sold {len(sales)} position{'s' if len(sales) > 1 else ''} for {usd(total_proceeds)}")
         return redirect("/")
-    # GET page render
-    else:
 
-        # get the user's current stocks
-        portfolio = db.execute("SELECT symbol FROM portfolio WHERE user_id = :id",
-                               id=session["user_id"])
+    # GET: render holdings with values for the interactive sell form
+    cash = float(db.execute("SELECT cash FROM users WHERE id = :id", id=session["user_id"])[0]["cash"])
+    for row in holdings:
+        row["current_price"] = float(row["current_price"])
+        row["value"] = round(row["shares"] * row["current_price"], 2)
 
-        # render sell.html form, passing in current stocks
-        return render_template("sell.html", portfolio=portfolio)
+    return render_template("sell.html", holdings=holdings, cash=cash)
 
 
 @app.route("/timemachine", methods=["GET", "POST"])

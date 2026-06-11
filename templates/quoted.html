@@ -6,19 +6,16 @@
 
 
 {% block main %}
-<table class="table table-striped">
-    <thead>
-        <tr>
-            <th scope="col">Symbol</th>
-            <th scope="col">Price</th>
-        </tr>
-    </thead>
-    <tbody>
-            <tr>
-                <td>{{symbol['symbol']}}</td>
-                <td>{{price | usd}}</td>
-            </tr>
-    </tbody>
-</table>
-
+    <div class="card shadow-sm mx-auto" style="max-width: 24rem;">
+        <div class="card-body">
+            <h1 class="h4 mb-1">{{ symbol['symbol'] }}</h1>
+            <p class="display-6 mb-1">{{ price | usd }}</p>
+            <p class="text-muted small">previous market close</p>
+            <div class="d-flex justify-content-center gap-2 mt-3">
+                <a class="btn btn-primary" href="/buy?symbol={{ symbol['symbol'] }}">Buy</a>
+                <a class="btn btn-outline-secondary" href="/timemachine?symbol={{ symbol['symbol'] }}">Time Machine</a>
+                <a class="btn btn-outline-secondary" href="/quote">New Quote</a>
+            </div>
+        </div>
+    </div>
 {% endblock %}

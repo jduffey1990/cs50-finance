@@ -5,18 +5,157 @@
 {% endblock %}
 
 {% block main %}
-    <form action="/sell" method="post" class = "d-flex flex-column align-items-center">
-        <div class="mb-3">
-            <select class="form-control mx-auto w-auto" name="symbol" type="text">
-                <option value="" disabled selected>Symbol</option>
-                {% for row in portfolio %}
-                    <option value= "{{row['symbol']}}"> {{row['symbol']}} </option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="mb-3">
-            <input class="form-control mx-auto w-auto" name="shares" placeholder="Shares" type="number">
-        </div>
-        <button class="btn btn-primary" type="submit">Sell</button>
-    </form>
+    <h1 class="h3 mb-2">Sell</h1>
+
+    {% if not holdings %}
+        <p class="text-muted">You don't own any stocks yet — <a href="/buy">go buy some</a>.</p>
+    {% else %}
+        <p class="text-muted mb-4">Drag the sliders (or type) to choose how many shares to sell. Estimates use the last refreshed price; the sale itself executes at the live market price.</p>
+
+        <form action="/sell" method="post">
+            <div class="row justify-content-center g-4 text-start">
+                <div class="col-lg-7">
+                    <div class="d-flex justify-content-end gap-2 mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" id="sellNone">Clear</button>
+                        <button class="btn btn-sm btn-outline-danger" type="button" id="sellAll">Sell everything</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle" id="sellTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th scope="col">Symbol</th>
+                                    <th scope="col">You Own</th>
+                                    <th scope="col">Last Price</th>
+                                    <th scope="col" style="min-width: 200px;">Sell</th>
+                                    <th scope="col" class="text-end">Est. Proceeds</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in holdings %}
+                                    <tr data-symbol="{{ row['symbol'] }}" data-price="{{ row['current_price'] }}" data-owned="{{ row['shares'] }}">
+                                        <td><strong>{{ row['symbol'] }}</strong></td>
+                                        <td>{{ row['shares'] }} <span class="text-muted small">({{ row['value'] | usd }})</span></td>
+                                        <td>{{ row['current_price'] | usd }}</td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <input type="range" class="form-range sell-range" min="0" max="{{ row['shares'] }}" step="1" value="0" aria-label="Shares of {{ row['symbol'] }} to sell">
+                                                <input type="number" class="form-control form-control-sm sell-qty" name="shares_{{ row['symbol'] }}" min="0" max="{{ row['shares'] }}" value="0" style="width: 5.5rem;">
+                                            </div>
+                                        </td>
+                                        <td class="proceeds text-end text-muted">$0.00</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <h2 class="h6 text-muted">Sale Summary</h2>
+                            <div class="d-flex justify-content-between">
+                                <span>Positions selected</span><strong id="positionsCount">0</strong>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span>Estimated proceeds</span><strong id="totalProceeds">$0.00</strong>
+                            </div>
+                            <div class="d-flex justify-content-between border-top mt-2 pt-2">
+                                <span>Cash after sale</span><strong id="cashAfter"></strong>
+                            </div>
+                            <button class="btn btn-danger w-100 mt-3" type="submit" id="sellSubmit" disabled>Sell Selected</button>
+                        </div>
+                    </div>
+                    <h2 class="h6 text-muted">Portfolio after this sale</h2>
+                    <canvas id="allocationChart"></canvas>
+                </div>
+            </div>
+        </form>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if holdings %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const CASH = {{ cash | tojson }};
+    const usd = v => "$" + v.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const rows = Array.from(document.querySelectorAll("#sellTable tbody tr"));
+
+    const PALETTE = ["#537fbe", "#ea433b", "#f5b82e", "#2e944b", "#8e6bbf", "#3aa6a6", "#d97c2b", "#b04a7a"];
+    const chart = new Chart(document.getElementById("allocationChart"), {
+        type: "doughnut",
+        data: { labels: [], datasets: [{ data: [], backgroundColor: [] }] },
+        options: {
+            plugins: {
+                legend: { position: "bottom" },
+                tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${usd(ctx.parsed)}` } }
+            }
+        }
+    });
+
+    function update() {
+        let proceeds = 0, count = 0;
+        const labels = [], data = [], colors = [];
+
+        rows.forEach((tr, i) => {
+            const price = parseFloat(tr.dataset.price);
+            const owned = parseInt(tr.dataset.owned);
+            const qty = Math.min(owned, Math.max(0, parseInt(tr.querySelector(".sell-qty").value) || 0));
+            const rowProceeds = qty * price;
+            const cell = tr.querySelector(".proceeds");
+            cell.textContent = usd(rowProceeds);
+            cell.classList.toggle("text-muted", qty === 0);
+            cell.classList.toggle("fw-bold", qty > 0);
+            tr.classList.toggle("table-warning", qty > 0);
+            if (qty > 0) { proceeds += rowProceeds; count++; }
+
+            const remaining = (owned - qty) * price;
+            if (remaining > 0.005) {
+                labels.push(tr.dataset.symbol);
+                data.push(Math.round(remaining * 100) / 100);
+                colors.push(PALETTE[i % PALETTE.length]);
+            }
+        });
+
+        labels.push("Cash");
+        data.push(Math.round((CASH + proceeds) * 100) / 100);
+        colors.push("#9aa5b1");
+
+        document.getElementById("positionsCount").textContent = count;
+        document.getElementById("totalProceeds").textContent = usd(proceeds);
+        document.getElementById("cashAfter").textContent = usd(CASH + proceeds);
+        document.getElementById("sellSubmit").disabled = count === 0;
+
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = data;
+        chart.data.datasets[0].backgroundColor = colors;
+        chart.update();
+    }
+
+    rows.forEach(tr => {
+        const range = tr.querySelector(".sell-range");
+        const qty = tr.querySelector(".sell-qty");
+        range.addEventListener("input", () => { qty.value = range.value; update(); });
+        qty.addEventListener("input", () => { range.value = qty.value || 0; update(); });
+    });
+
+    document.getElementById("sellAll").addEventListener("click", () => {
+        rows.forEach(tr => {
+            tr.querySelector(".sell-qty").value = tr.dataset.owned;
+            tr.querySelector(".sell-range").value = tr.dataset.owned;
+        });
+        update();
+    });
+    document.getElementById("sellNone").addEventListener("click", () => {
+        rows.forEach(tr => {
+            tr.querySelector(".sell-qty").value = 0;
+            tr.querySelector(".sell-range").value = 0;
+        });
+        update();
+    });
+
+    update();
+</script>
+{% endif %}
 {% endblock %}

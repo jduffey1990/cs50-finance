@@ -5,3 +5,4 @@ requests
 gunicorn
 python-dotenv
 jinja2
+psycopg2-binary

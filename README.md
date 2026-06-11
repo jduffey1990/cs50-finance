@@ -22,13 +22,23 @@ Embark on your journey with "C$50 Finance" by following these straightforward st
 
 4. **API Key**: Grab a free API key from [Polygon.io](https://polygon.io/dashboard/keys), then copy `.env.example` to `.env` and paste your key in. The free tier (5 requests/minute) is plenty — the app caches quotes for 15 minutes.
 
-5. **Create the Database**: The SQLite database isn't checked into the repo. Create it from the schema with `sqlite3 finance.db < schema.sql`.
+5. **Create the Database**: Two options. For quick offline development, create a local SQLite file with `sqlite3 finance.db < schema.sql` — the app uses it automatically when `DATABASE_URL` is unset. For a persistent database (and what production uses), create a free Postgres database at [Neon](https://neon.tech), apply `schema.pg.sql` to it, and put its connection string in `.env` as `DATABASE_URL`.
 
 6. **Launch the Application**: With everything in place, start the Flask application by executing `flask run` in your terminal. This command initiates a local web server. Navigate to the URL outputted by Flask (typically `http://127.0.0.1:5000/`) in your web browser to view the application.
 
 7. **Create an Account**: To fully engage with "C$50 Finance," register for an account through the website's registration page. This allows you to simulate stock transactions and manage a virtual portfolio.  **please do not use any information on here that you use in other locations.  I used a password encryption tool, but this is still an unmonitored web application.**
 
 By following these steps, you'll have "C$50 Finance" up and running, ready for you to explore the functionalities of stock trading within a controlled, simulated environment.
+
+## Deployment (Render + Neon)
+
+The live site runs as a [Render](https://render.com) web service with its data in a [Neon](https://neon.tech) Postgres database, so user accounts and trades survive deploys and free-tier spin-downs (a plain SQLite file on Render's ephemeral disk would be reset to its build-time state every time the service restarts).
+
+- **Build command**: `pip install -r requirements.txt`
+- **Start command**: `gunicorn app:app`
+- **Environment variables**: `DATABASE_URL` (the Neon connection string) and `POLYGON_API_KEY`
+
+To migrate an existing local `finance.db` into a fresh Neon database, run `python scripts/migrate_sqlite_to_pg.py` once — it applies `schema.pg.sql`, copies every table with original ids, and verifies row counts.
 
 ## Application Features
 

@@ -1,3 +1,5 @@
+import os
+
 from cs50 import SQL
 from datetime import date, timedelta
 from flask import Flask, flash, redirect, render_template, request, session
@@ -21,8 +23,9 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
-# Configure CS50 Library to use SQLite database
-db = SQL("sqlite:///finance.db")
+# Neon Postgres when DATABASE_URL is set (importing helpers above loaded .env),
+# otherwise fall back to local SQLite for offline development
+db = SQL(os.environ.get("DATABASE_URL", "sqlite:///finance.db"))
 
 
 @app.after_request
@@ -93,7 +96,7 @@ def index():
 
     # record today's net worth (one snapshot per user per day) for the chart
     db.execute(
-        "INSERT INTO snapshots (user_id, date, total_value) VALUES (:id, DATE('now'), :value) "
+        "INSERT INTO snapshots (user_id, date, total_value) VALUES (:id, CURRENT_DATE, :value) "
         "ON CONFLICT(user_id, date) DO UPDATE SET total_value = excluded.total_value",
         id=session["user_id"], value=float(total_portfolio_value))
 
@@ -147,8 +150,8 @@ def buy():
             "INSERT INTO portfolio (user_id, symbol, shares, bought_price, current_price) "
             "VALUES (:user_id, :symbol, :shares, :price, :price) "
             "ON CONFLICT(user_id, symbol) DO UPDATE SET "
-            "bought_price = ROUND((shares * bought_price + excluded.shares * excluded.bought_price) "
-            "/ (shares + excluded.shares), 4), "
+            "bought_price = ROUND(CAST((shares * bought_price + excluded.shares * excluded.bought_price) "
+            "/ (shares + excluded.shares) AS NUMERIC), 4), "
             "shares = shares + excluded.shares, "
             "current_price = excluded.current_price",
             user_id=session["user_id"], symbol=symbol, shares=shares, price=price)

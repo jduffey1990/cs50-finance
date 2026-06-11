@@ -1,10 +1,8 @@
-import os
-
 from cs50 import SQL
 from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from helpers import apology, login_required, lookup, usd
 
@@ -22,7 +20,6 @@ Session(app)
 # Configure CS50 Library to use SQLite database
 db = SQL("sqlite:///finance.db")
 
-price_cache = {}
 
 @app.after_request
 def after_request(response):
@@ -37,7 +34,7 @@ def to_money(value):
     """Convert API value to Decimal or return None if not usable."""
     try:
         return Decimal(str(value)).quantize(Decimal("0.01"), ROUND_HALF_UP)
-    except (TypeError, ValueError):
+    except (InvalidOperation, TypeError, ValueError):
         return None
 
 
@@ -59,28 +56,26 @@ def index():
 
     for row in rows:
         shares = row["shares"]
-        stored_price = Decimal(str(row["current_price"])).quantize(Decimal("0.01"))
+        stored_price = to_money(row["current_price"])
 
-        ticker = row["symbol"].upper()
-        quote = price_cache[ticker] or lookup(ticker)
-        price_cache[ticker] = quote.get("price")
-        live_price = quote.get("price")
+        quote = lookup(row["symbol"])
 
         # choose price: live if available, otherwise DB copy
-        if live_price is not None:
-            current_price = to_money(live_price)  # ← already Decimal
-            db.execute(
-                "UPDATE portfolio SET current_price = :price "
-                "WHERE user_id = :id AND symbol = :symbol",
-                price=float(current_price),
-                id=session["user_id"],
-                symbol=row["symbol"],
-            )
+        if quote is not None:
+            current_price = to_money(quote["price"])
+            if current_price != stored_price:
+                db.execute(
+                    "UPDATE portfolio SET current_price = :price "
+                    "WHERE user_id = :id AND symbol = :symbol",
+                    price=float(current_price),
+                    id=session["user_id"],
+                    symbol=row["symbol"],
+                )
         else:
-            flash(f"Could not refresh {row['symbol']}: {quote.get('error', 'no data')}")
-            current_price = stored_price  # still Decimal
+            flash(f"Could not refresh {row['symbol']}; showing last saved price")
+            current_price = stored_price
 
-        bought_price = Decimal(str(row["bought_price"])).quantize(Decimal("0.01"))
+        bought_price = to_money(row["bought_price"])
         purchase_total = shares * bought_price
         row_total_value = shares * current_price
 
@@ -104,30 +99,40 @@ def buy():
     """Buy shares of stock"""
     # render buy page
     if request.method == "POST":
-        # find symbol in lookup
-        symbol = request.form.get("symbol").upper()
-        shares = (request.form.get("shares"))
-        data = lookup(symbol)
+        symbol = (request.form.get("symbol") or "").strip().upper()
+        shares = request.form.get("shares") or ""
 
-        if not shares.isdigit():
-            return apology("Please enter a digit", 400)
-        # not in Polygon
-        if not data:
-            return apology("Invalid stock symbol", 400)
+        if not symbol:
+            return apology("Please enter a stock symbol", 400)
+        if not shares.isdigit() or int(shares) < 1:
+            return apology("Shares must be a positive whole number", 400)
 
         shares = int(shares)
+
+        # not in Polygon
+        data = lookup(symbol)
+        if data is None:
+            return apology("Invalid stock symbol", 400)
+
         price = data['price']
 
         # forming necessary cash amount and cost
-        cost = price * shares
+        cost = round(price * shares, 2)
         cash = db.execute("SELECT cash FROM users WHERE id = :id", id=session["user_id"])[0]['cash']
 
         if cost > cash:
             return apology("Insufficient funds", 400)
 
-        # update present stock or add if not a previously owned stock
+        # update present stock or add if not a previously owned stock;
+        # on a repeat buy, bought_price becomes the weighted-average cost basis
         db.execute(
-            "INSERT INTO portfolio (user_id, symbol, shares, bought_price, current_price) VALUES (:user_id, :symbol, :shares, :price, :price) ON CONFLICT(user_id, symbol) DO UPDATE SET shares = shares + :shares, current_price = :price",
+            "INSERT INTO portfolio (user_id, symbol, shares, bought_price, current_price) "
+            "VALUES (:user_id, :symbol, :shares, :price, :price) "
+            "ON CONFLICT(user_id, symbol) DO UPDATE SET "
+            "bought_price = ROUND((shares * bought_price + excluded.shares * excluded.bought_price) "
+            "/ (shares + excluded.shares), 4), "
+            "shares = shares + excluded.shares, "
+            "current_price = excluded.current_price",
             user_id=session["user_id"], symbol=symbol, shares=shares, price=price)
         # user cash update
         db.execute("UPDATE users SET cash = cash - :cost WHERE id = :id",
@@ -201,17 +206,18 @@ def logout():
 
 
 @app.route("/quote", methods=["GET", "POST"])
+@login_required
 def quote():
     # form submit as html directed
     if request.method == "POST":
-        symbol = lookup(request.form.get("symbol").upper())
+        data = lookup(request.form.get("symbol"))
 
         # Polygon doesn't have symbol
-        if symbol == None:
+        if data is None:
             return apology("Polygon doesn't have that stock symbol", 400)
 
         # quoted is the secondary html after form post, now showing the single stock quote
-        return render_template("quoted.html", symbol=symbol, price=symbol['price'])
+        return render_template("quoted.html", symbol=data, price=data['price'])
 
     # open page
     else:
@@ -230,15 +236,8 @@ def register():
         password = request.form.get("password")
         confirmation = request.form.get("confirmation")
 
-        # Query database for username
-        rows = db.execute(
-            "SELECT * FROM users WHERE username = ?", request.form.get("username")
-        )
-
         if not username:
             return apology("must provide username", 400)
-        elif len(rows) != 0:
-            return apology("that username is already taken", 400)
         elif not password:
             return apology("must provide password", 400)
         elif not confirmation:
@@ -246,7 +245,12 @@ def register():
         elif password != confirmation:
             return apology("the password and confirmation must match", 400)
 
-        db.execute("INSERT INTO users (username, hash) VALUES(?, ?)", username, generate_password_hash(password))
+        # the UNIQUE index on username enforces no duplicates
+        try:
+            db.execute("INSERT INTO users (username, hash) VALUES(?, ?)",
+                       username, generate_password_hash(password))
+        except ValueError:
+            return apology("that username is already taken", 400)
 
         return redirect("/login")
 
@@ -260,50 +264,37 @@ def sell():
 
     # if POST method proceed to sell stock
     if request.method == "POST":
-        # start variable from form and get symbol data
-        symbol = request.form.get("symbol")
-        shares = request.form.get("shares")
-        data = lookup(symbol)
-        rows = db.execute("SELECT * FROM portfolio WHERE user_id = :id AND symbol = :symbol",
-                          id=session["user_id"], symbol=symbol)
+        symbol = (request.form.get("symbol") or "").strip().upper()
+        shares = request.form.get("shares") or ""
 
-        if not shares.isdigit():
-            return apology("Please provide whole number for shares", 400)
+        if not shares.isdigit() or int(shares) < 1:
+            return apology("Shares must be a positive whole number", 400)
 
         shares = int(shares)
 
-        if shares <= 0:
-            return apology("Shares must be greater than 0")
-
-        # return apology if the symbol isn't owned or valid
+        # return apology if the symbol isn't owned
+        rows = db.execute("SELECT * FROM portfolio WHERE user_id = :id AND symbol = :symbol",
+                          id=session["user_id"], symbol=symbol)
         if len(rows) != 1:
             return apology("Provide valid stock symbol", 400)
 
-        # must provide amount of shares
-        if not shares:
-            return apology("Provide number of shares", 400)
-
-        # current shares of this stock
-        previousshares = rows[0]['shares']
-
         # shares must be less than or equal to shares owned
+        previousshares = rows[0]['shares']
         if shares > previousshares:
             return apology("You can't sell more than you own", 400)
 
         # get the current price from the data
+        data = lookup(symbol)
+        if data is None:
+            return apology("Couldn't get a price for that stock, try again shortly", 400)
         current_price = data['price']
 
         # total value sold
-        value = current_price * shares
-
-        # updtate cash value
-        cash = db.execute("SELECT cash FROM users WHERE id = :id", id=session['user_id'])
-        cash = cash[0]['cash']
-        cash = cash + value
+        value = round(current_price * shares, 2)
 
         # update cash for the user
-        db.execute("UPDATE users SET cash = :cash WHERE id = :id",
-                   cash=cash, id=session["user_id"])
+        db.execute("UPDATE users SET cash = cash + :value WHERE id = :id",
+                   value=value, id=session["user_id"])
 
         # update shares owned in db
         updatedshares = previousshares - shares
@@ -317,7 +308,7 @@ def sell():
         # update history table
         db.execute(
             "INSERT INTO history (user_id, symbol, shares, method, price) VALUES (:user_id, :symbol, :shares, 'Sell', :price)",
-            user_id=session["user_id"], symbol=symbol, shares=shares, price=data['price'])
+            user_id=session["user_id"], symbol=symbol, shares=shares, price=current_price)
 
         return redirect("/")
     # GET page render

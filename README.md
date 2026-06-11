@@ -10,7 +10,7 @@ Embark on a financial journey with C$50 Finance, my capstone project for Harvard
 - Front-end development with HTML and styled using Bootstrap.
 
 ## Overview
-This is an innovative web app designed to simulate stock market trading. Users can engage in buying and selling shares with fictitious currency while accessing real-time stock prices via the IEX API. It also offers a comprehensive view of one's investment portfolio and transaction history, adding an educational and entertaining twist to learning about the stock market.
+This is an innovative web app designed to simulate stock market trading. Users can engage in buying and selling shares with fictitious currency while accessing stock prices (previous market close) via the [Polygon.io](https://polygon.io/) API. It also offers a comprehensive view of one's investment portfolio and transaction history, adding an educational and entertaining twist to learning about the stock market.
 
 ## Getting Started
 Embark on your journey with "C$50 Finance" by following these straightforward steps to set up and launch the application:
@@ -20,7 +20,9 @@ Embark on your journey with "C$50 Finance" by following these straightforward st
 
 3. **Dependency Installation**: With the virtual environment active, install the project's dependencies by running `pip install -r requirements.txt`. This command ensures all necessary Python packages, including Flask and CS50's SQL library, are available.
 
-4. **Environment Variables**: To properly run your Flask application, set the necessary environment variable. For Unix/macOS, use `export FLASK_APP=application.py`. Windows users should apply `set FLASK_APP=app.py`.
+4. **API Key**: Grab a free API key from [Polygon.io](https://polygon.io/dashboard/keys), then copy `.env.example` to `.env` and paste your key in. The free tier (5 requests/minute) is plenty — the app caches quotes for 15 minutes.
+
+5. **Create the Database**: The SQLite database isn't checked into the repo. Create it from the schema with `sqlite3 finance.db < schema.sql`.
 
 6. **Launch the Application**: With everything in place, start the Flask application by executing `flask run` in your terminal. This command initiates a local web server. Navigate to the URL outputted by Flask (typically `http://127.0.0.1:5000/`) in your web browser to view the application.
 
@@ -37,7 +39,7 @@ Enables new users to create an account. Displays an error for incomplete submiss
 Presents a detailed table of the user's stock portfolio, including the number of shares owned, current stock prices, total holding values, available cash balance, and combined net worth.
 
 ### Quote Page
-Facilitates real-time stock price checks by submitting a query to the IEX API, with error handling for invalid stock symbols.
+Facilitates stock price checks (previous market close) by querying the Polygon.io API, with error handling for invalid stock symbols.
 
 ### Buy Page
 Allows users to purchase stocks by specifying the symbol and desired share quantity, ensuring transactions are viable based on current market prices and user funds.

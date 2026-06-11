@@ -1,6 +1,9 @@
+import logging
 import os
+import re
+import time
+
 import requests
-from datetime import date, timedelta
 
 from flask import redirect, render_template, session
 from functools import wraps
@@ -49,54 +52,50 @@ def login_required(f):
 
     return decorated_function
 
-last_market_day = None
+# Previous-close prices change at most once a day, so a short in-process cache
+# keeps repeat page loads from burning through Polygon's 5-requests/minute free tier.
+_quote_cache = {}
+QUOTE_TTL_SECONDS = 15 * 60
 
-def get_last_market_day():
-    """Always return the previous market day with available data (never today)."""
-    global last_market_day
+SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 
-    if last_market_day is not None:
-        return last_market_day
-
-    today = date.today()
-
-    # Always subtract one day (today's data won't be available yet)
-    candidate = today - timedelta(days=1)
-
-    # Skip backwards over weekends
-    while candidate.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
-        candidate -= timedelta(days=1)
-
-    last_market_day = candidate.isoformat()
-    return last_market_day
 
 def lookup(symbol):
-    """Look up stock price using Polygon.io's free open-close endpoint."""
-    symbol = symbol.upper()
-    api_key = os.getenv("POLYGON_API_KEY")
-    query_date = get_last_market_day()
+    """Look up a stock's most recent closing price via Polygon.io.
 
-    url = f"https://api.polygon.io/v1/open-close/{symbol}/{query_date}?adjusted=true&apiKey={api_key}"
+    Uses the /prev (previous close) endpoint, which skips weekends and market
+    holidays server-side. Returns {"symbol": ..., "price": ...} or None.
+    """
+    symbol = (symbol or "").strip().upper()
+    if not SYMBOL_RE.match(symbol):
+        return None
+
+    cached = _quote_cache.get(symbol)
+    if cached and time.time() - cached["fetched_at"] < QUOTE_TTL_SECONDS:
+        return {"symbol": symbol, "price": cached["price"]}
+
+    api_key = os.getenv("POLYGON_API_KEY")
+    if not api_key:
+        logging.error("POLYGON_API_KEY is not set; see .env.example")
+        return None
 
     try:
-        response = requests.get(url)
+        response = requests.get(
+            f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
+            params={"adjusted": "true", "apiKey": api_key},
+            timeout=10,
+        )
         response.raise_for_status()
-        data = response.json()
+        results = response.json().get("results")
+        if not results:
+            return None
+        price = round(float(results[0]["c"]), 2)
+    except (requests.RequestException, KeyError, TypeError, ValueError) as e:
+        logging.warning("lookup(%s) failed: %s", symbol, e)
+        return None
 
-        print("we have data now", data)
-
-        if "close" not in data:
-            return {"error": "No price data found", "symbol": symbol}
-
-        price = round(float(data["close"]), 2)
-        return {"price": price, "symbol": symbol}
-
-    except requests.exceptions.HTTPError as e:
-        return {"error": "HTTP error", "message": str(e)}
-    except (KeyError, ValueError) as e:
-        return {"error": "Data parsing error", "message": str(e)}
-    except requests.RequestException as e:
-        return {"error": "Request failed", "message": str(e)}
+    _quote_cache[symbol] = {"price": price, "fetched_at": time.time()}
+    return {"symbol": symbol, "price": price}
 
 
 

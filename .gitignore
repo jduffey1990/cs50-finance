@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets
+.env
+
+# App data (recreate with: sqlite3 finance.db < schema.sql)
+finance.db
+flask_session/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

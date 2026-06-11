@@ -10,7 +10,7 @@ Embark on a financial journey with C$50 Finance, my capstone project for Harvard
 - Front-end development with HTML and styled using Bootstrap.
 
 ## Overview
-This is an innovative web app designed to simulate stock market trading. Users can engage in buying and selling shares with fictitious currency while accessing stock prices (previous market close) via the [Polygon.io](https://polygon.io/) API. It also offers a comprehensive view of one's investment portfolio and transaction history, adding an educational and entertaining twist to learning about the stock market.
+This is an innovative web app designed to simulate stock market trading. Users can engage in buying and selling shares with fictitious currency while accessing stock prices (previous market close) via the [Massive](https://massive.com/) (formerly Polygon.io) API. It also offers a comprehensive view of one's investment portfolio and transaction history, adding an educational and entertaining twist to learning about the stock market.
 
 ## Getting Started
 Embark on your journey with "C$50 Finance" by following these straightforward steps to set up and launch the application:
@@ -20,7 +20,7 @@ Embark on your journey with "C$50 Finance" by following these straightforward st
 
 3. **Dependency Installation**: With the virtual environment active, install the project's dependencies by running `pip install -r requirements.txt`. This command ensures all necessary Python packages, including Flask and CS50's SQL library, are available.
 
-4. **API Key**: Grab a free API key from [Polygon.io](https://polygon.io/dashboard/keys), then copy `.env.example` to `.env` and paste your key in. The free tier (5 requests/minute) is plenty — the app caches quotes for 15 minutes.
+4. **API Key**: Grab a free API key from [Massive](https://massive.com/dashboard/keys), then copy `.env.example` to `.env` and paste your key in. The free tier (5 requests/minute) is plenty — the app caches quotes for 15 minutes.
 
 5. **Create the Database**: Two options. For quick offline development, create a local SQLite file with `sqlite3 finance.db < schema.sql` — the app uses it automatically when `DATABASE_URL` is unset. For a persistent database (and what production uses), create a free Postgres database at [Neon](https://neon.tech), apply `schema.pg.sql` to it, and put its connection string in `.env` as `DATABASE_URL`.
 
@@ -36,7 +36,7 @@ The live site runs as a [Render](https://render.com) web service with its data i
 
 - **Build command**: `pip install -r requirements.txt`
 - **Start command**: `gunicorn app:app`
-- **Environment variables**: `DATABASE_URL` (the Neon connection string) and `POLYGON_API_KEY`
+- **Environment variables**: `DATABASE_URL` (the Neon connection string) and `MASSIVE_API_KEY`
 
 To migrate an existing local `finance.db` into a fresh Neon database, run `python scripts/migrate_sqlite_to_pg.py` once — it applies `schema.pg.sql`, copies every table with original ids, and verifies row counts.
 
@@ -49,7 +49,7 @@ Enables new users to create an account. Displays an error for incomplete submiss
 Presents a detailed table of the user's stock portfolio, including the number of shares owned, current stock prices, total holding values, unrealized gain/loss per position (in dollars and percent), available cash balance, and combined net worth. Each visit also records a daily net-worth snapshot, charted over time at the bottom of the page.
 
 ### Quote Page
-Facilitates stock price checks (previous market close) by querying the Polygon.io API, with error handling for invalid stock symbols.
+Facilitates stock price checks (previous market close) by querying the Massive (formerly Polygon.io) API, with error handling for invalid stock symbols.
 
 ### Buy Page
 Allows users to purchase stocks by specifying the symbol and desired share quantity, ensuring transactions are viable based on current market prices and user funds.
@@ -61,7 +61,7 @@ Enables the sale of stocks currently held in the user's portfolio, updating the 
 Chronicles all user transactions, listing the nature of the transaction (buy/sell), stock symbol, transaction price, share quantity, and the date/time of execution.
 
 ### Time Machine Page
-Answers "what if I had invested $X in Y back then?" — pick a stock, a dollar amount, and any date up to two years ago, and see the investment's value charted day by day through today, with the total gain or loss. A hands-on lesson in compound returns, powered by Polygon's historical daily bars.
+Answers "what if I had invested $X in Y back then?" — pick a stock, a dollar amount, and any date up to two years ago, and see the investment's value charted day by day through today, with the total gain or loss. A hands-on lesson in compound returns, powered by Massive's historical daily bars.
 
 ### Leaderboard Page
 Ranks all users by net worth (cash plus holdings at last-known prices). Everyone starts with the same $10,000, so the ranking reflects pure investing performance.

@@ -54,7 +54,7 @@ def login_required(f):
     return decorated_function
 
 # Previous-close prices change at most once a day, so a short in-process cache
-# keeps repeat page loads from burning through Polygon's 5-requests/minute free tier.
+# keeps repeat page loads from burning through Massive's 5-requests/minute free tier.
 _quote_cache = {}
 QUOTE_TTL_SECONDS = 15 * 60
 
@@ -62,7 +62,7 @@ SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 
 
 def lookup(symbol):
-    """Look up a stock's most recent closing price via Polygon.io.
+    """Look up a stock's most recent closing price via Massive (formerly Polygon.io).
 
     Uses the /prev (previous close) endpoint, which skips weekends and market
     holidays server-side. Returns {"symbol": ..., "price": ...} or None.
@@ -75,14 +75,14 @@ def lookup(symbol):
     if cached and time.time() - cached["fetched_at"] < QUOTE_TTL_SECONDS:
         return {"symbol": symbol, "price": cached["price"]}
 
-    api_key = os.getenv("POLYGON_API_KEY")
+    api_key = os.getenv("MASSIVE_API_KEY")
     if not api_key:
-        logging.error("POLYGON_API_KEY is not set; see .env.example")
+        logging.error("MASSIVE_API_KEY is not set; see .env.example")
         return None
 
     try:
         response = requests.get(
-            f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev",
+            f"https://api.massive.com/v2/aggs/ticker/{symbol}/prev",
             params={"adjusted": "true", "apiKey": api_key},
             timeout=10,
         )
@@ -108,7 +108,7 @@ def lookup_history(symbol, start, end):
     """Daily closing prices for a symbol between two ISO dates (inclusive).
 
     Returns a list of {"date": ..., "close": ...} oldest-first, or None.
-    Polygon's free tier provides two years of daily history.
+    Massive's free tier provides two years of daily history.
     """
     symbol = (symbol or "").strip().upper()
     if not SYMBOL_RE.match(symbol):
@@ -119,14 +119,14 @@ def lookup_history(symbol, start, end):
     if cached and time.time() - cached["fetched_at"] < HISTORY_TTL_SECONDS:
         return cached["bars"]
 
-    api_key = os.getenv("POLYGON_API_KEY")
+    api_key = os.getenv("MASSIVE_API_KEY")
     if not api_key:
-        logging.error("POLYGON_API_KEY is not set; see .env.example")
+        logging.error("MASSIVE_API_KEY is not set; see .env.example")
         return None
 
     try:
         response = requests.get(
-            f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}",
+            f"https://api.massive.com/v2/aggs/ticker/{symbol}/range/1/day/{start}/{end}",
             params={"adjusted": "true", "sort": "asc", "limit": 50000, "apiKey": api_key},
             timeout=10,
         )

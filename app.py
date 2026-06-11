@@ -130,7 +130,7 @@ def buy():
 
         shares = int(shares)
 
-        # not in Polygon
+        # not in Massive
         data = lookup(symbol)
         if data is None:
             return apology("Invalid stock symbol", 400)
@@ -233,9 +233,9 @@ def quote():
     if request.method == "POST":
         data = lookup(request.form.get("symbol"))
 
-        # Polygon doesn't have symbol
+        # Massive doesn't have symbol
         if data is None:
-            return apology("Polygon doesn't have that stock symbol", 400)
+            return apology("No price data for that stock symbol", 400)
 
         # quoted is the secondary html after form post, now showing the single stock quote
         return render_template("quoted.html", symbol=data, price=data['price'])
@@ -348,7 +348,7 @@ def sell():
 def timemachine():
     """Show what a past investment would be worth today."""
     today = date.today()
-    min_date = today - timedelta(days=729)  # Polygon free tier: two years of daily history
+    min_date = today - timedelta(days=729)  # Massive free tier: two years of daily history
     max_date = today - timedelta(days=1)
 
     if request.method == "POST":
